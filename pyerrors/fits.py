@@ -70,7 +70,7 @@ class Fit_result(Sequence):
         return '\n'.join([key.rjust(m) + ': ' + repr(value) for key, value in sorted(self.__dict__.items())])
 
 
-def least_squares(x, y, func, priors=None, silent=False, **kwargs):
+def least_squares(x, y, func, priors=None, silent=False, initial_guess=None, method='Levenberg-Marquardt', tol=None, correlated_fit=None, inv_chol_cov_matrix=None, expected_chisquare=False, resplot=False, do_qqplot=False, num_grad=False, smooth=None, **kwargs):
     r'''Performs a non-linear fit to y = func(x).
         ```
 
@@ -151,7 +151,7 @@ def least_squares(x, y, func, priors=None, silent=False, **kwargs):
         For details about how the covariance matrix is estimated see `pyerrors.obs.covariance`.
         In practice the correlation matrix is Cholesky decomposed and inverted (instead of the covariance matrix).
         This procedure should be numerically more stable as the correlation matrix is typically better conditioned (Jacobi preconditioning).
-    inv_chol_cov_matrix [array,list], optional
+    inv_chol_cov_matrix : [array,list], optional
         array: shape = (no of y values) X (no of y values)
         list:   for an uncombined fit: [""]
                 for a combined fit: list of keys belonging to the corr_matrix saved in the array, must be the same as the keys of the y dict in alphabetical order
@@ -164,10 +164,12 @@ def least_squares(x, y, func, priors=None, silent=False, **kwargs):
         corrected by effects caused by correlated input data (default False).
     resplot : bool
         If True, a plot which displays fit, data and residuals is generated (default False).
-    qqplot : bool
+    do_qqplot : bool
         If True, a quantile-quantile plot of the fit result is generated (default False).
     num_grad : bool
         Use numerical differentation instead of automatic differentiation to perform the error propagation (default False).
+    smooth : None or int
+        Argument used in pyerrors.obs.covariance (default None).
 
     Returns
     -------
@@ -241,7 +243,7 @@ def least_squares(x, y, func, priors=None, silent=False, **kwargs):
         funcd = {"": func}
         output.fit_function = func
 
-    if kwargs.get('num_grad') is True:
+    if num_grad:
         jacobian = num_jacobian
         hessian = num_hessian
     else:
@@ -336,8 +338,8 @@ def least_squares(x, y, func, priors=None, silent=False, **kwargs):
         prior_mask = []
         loc_priors = []
 
-    if 'initial_guess' in kwargs:
-        x0 = kwargs.get('initial_guess')
+    if initial_guess is not None:
+        x0 = initial_guess
         if len(x0) != n_parms:
             raise ValueError('Initial guess does not have the correct length: %d vs. %d' % (len(x0), n_parms))
     else:
@@ -355,9 +357,9 @@ def least_squares(x, y, func, priors=None, silent=False, **kwargs):
     def chisqfunc_uncorr(p):
         return anp.sum(general_chisqfunc_uncorr(p, y_f, p_f) ** 2)
 
-    if kwargs.get('correlated_fit') is True:
-        if 'inv_chol_cov_matrix' in kwargs:
-            chol_inv = kwargs.get('inv_chol_cov_matrix')
+    if correlated_fit:
+        if inv_chol_cov_matrix is not None:
+            chol_inv = inv_chol_cov_matrix
             if (chol_inv[0].shape[0] != len(dy_f)):
                 raise TypeError('The number of columns of the inverse covariance matrix handed over needs to be equal to the number of y errors.')
             if (chol_inv[0].shape[0] != chol_inv[0].shape[1]):
@@ -366,7 +368,7 @@ def least_squares(x, y, func, priors=None, silent=False, **kwargs):
                 raise ValueError('The keys of inverse covariance matrix are not the same or do not appear in the same order as the x and y values.')
             chol_inv = chol_inv[0]
         else:
-            corr = covariance(y_all, correlation=True, **kwargs)
+            corr = covariance(y_all, correlation=True, smooth=smooth)
             inverrdiag = np.diag(1 / np.asarray(dy_f))
             chol_inv = invert_corr_cov_cholesky(corr, inverrdiag)
 
@@ -380,39 +382,38 @@ def least_squares(x, y, func, priors=None, silent=False, **kwargs):
         general_chisqfunc = general_chisqfunc_uncorr
         chisqfunc = chisqfunc_uncorr
 
-    output.method = kwargs.get('method', 'Levenberg-Marquardt')
+    output.method = method
     if not silent:
         print('Method:', output.method)
 
     if output.method != 'Levenberg-Marquardt':
         if output.method == 'migrad':
             tolerance = 1e-4  # default value of 1e-1 set by iminuit can be problematic
-            if 'tol' in kwargs:
-                tolerance = kwargs.get('tol')
+            tolerance = tol
             fit_result = iminuit.minimize(chisqfunc_uncorr, x0, tol=tolerance)  # Stopping criterion 0.002 * tol * errordef
-            if kwargs.get('correlated_fit') is True:
+            if correlated_fit:
                 fit_result = iminuit.minimize(chisqfunc, fit_result.x, tol=tolerance)
             output.iterations = fit_result.nfev
         else:
             tolerance = 1e-12
-            if 'tol' in kwargs:
-                tolerance = kwargs.get('tol')
-            fit_result = scipy.optimize.minimize(chisqfunc_uncorr, x0, method=kwargs.get('method'), tol=tolerance)
-            if kwargs.get('correlated_fit') is True:
-                fit_result = scipy.optimize.minimize(chisqfunc, fit_result.x, method=kwargs.get('method'), tol=tolerance)
+            if tol is not None:
+                tolerance = tol
+            fit_result = scipy.optimize.minimize(chisqfunc_uncorr, x0, method=method, tol=tolerance)
+            if correlated_fit:
+                fit_result = scipy.optimize.minimize(chisqfunc, fit_result.x, method=method, tol=tolerance)
             output.iterations = fit_result.nit
 
         chisquare = fit_result.fun
 
     else:
-        if 'tol' in kwargs:
+        if tol is not None:
             print('tol cannot be set for Levenberg-Marquardt')
 
         def chisqfunc_residuals_uncorr(p):
             return general_chisqfunc_uncorr(p, y_f, p_f)
 
         fit_result = scipy.optimize.least_squares(chisqfunc_residuals_uncorr, x0, method='lm', ftol=1e-15, gtol=1e-15, xtol=1e-15)
-        if kwargs.get('correlated_fit') is True:
+        if correlated_fit:
             def chisqfunc_residuals(p):
                 return general_chisqfunc(p, y_f, p_f)
 
@@ -448,8 +449,8 @@ def least_squares(x, y, func, priors=None, silent=False, **kwargs):
         hat_vector = [item for sublist in hat_vector for item in sublist]
         return hat_vector
 
-    if kwargs.get('expected_chisquare') is True:
-        if kwargs.get('correlated_fit') is not True:
+    if expected_chisquare:
+        if correlated_fit:
             W = np.diag(1 / np.asarray(dy_f))
             cov = covariance(y_all)
             hat_vector = prepare_hat_matrix()
@@ -487,16 +488,18 @@ def least_squares(x, y, func, priors=None, silent=False, **kwargs):
     output.fit_parameters = result
 
     # Hotelling t-squared p-value for correlated fits.
-    if kwargs.get('correlated_fit') is True:
+    if correlated_fit:
         n_cov = np.min(np.vectorize(lambda x_all: x_all.N)(y_all))
         output.t2_p_value = 1 - scipy.stats.f.cdf((n_cov - output.dof) / (output.dof * (n_cov - 1)) * output.chisquare,
                                                   output.dof, n_cov - output.dof)
 
-    if kwargs.get('resplot') is True:
+    if resplot:
         for key in key_ls:
             residual_plot(xd[key], yd[key], funcd[key], result, title=key)
 
-    if kwargs.get('qqplot') is True:
+    if 'qqplot' in kwargs:
+        do_qqplot = kwargs.get('qqplot')
+    if do_qqplot:
         for key in key_ls:
             qqplot(xd[key], yd[key], funcd[key], result, title=key)
 
