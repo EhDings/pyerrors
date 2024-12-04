@@ -70,7 +70,7 @@ class Fit_result(Sequence):
         return '\n'.join([key.rjust(m) + ': ' + repr(value) for key, value in sorted(self.__dict__.items())])
 
 
-def least_squares(x, y, func, priors=None, silent=False, initial_guess=None, method='Levenberg-Marquardt', tol=None, correlated_fit=None, inv_chol_cov_matrix=None, expected_chisquare=False, resplot=False, do_qqplot=False, num_grad=False, smooth=None, **kwargs):
+def least_squares(x, y, func, priors=None, silent=False, initial_guess=None, method='Levenberg-Marquardt', tol=None, correlated_fit=None, inv_chol_cov_matrix=None, expected_chisquare=False, resplot=False, do_qqplot=False, num_grad=False, smooth=None, max_nfev=None, bounds=(-anp.inf, anp.inf), **kwargs):
     r'''Performs a non-linear fit to y = func(x).
         ```
 
@@ -169,7 +169,11 @@ def least_squares(x, y, func, priors=None, silent=False, initial_guess=None, met
     num_grad : bool
         Use numerical differentation instead of automatic differentiation to perform the error propagation (default False).
     smooth : None or int
-        Argument used in pyerrors.obs.covariance (default None).
+        Argument passed to pyerrors.obs.covariance (default None).
+    max_nfev : None or int
+        Argument passed to scipy.optimize.least_squares (default None).
+    bounds : 2-tuple of array_like or scipy.optimize.Bounds
+        Argument passed to scipy.optimize.least_squares (default (-inf, inf)).
 
     Returns
     -------
@@ -398,9 +402,10 @@ def least_squares(x, y, func, priors=None, silent=False, initial_guess=None, met
             tolerance = 1e-12
             if tol is not None:
                 tolerance = tol
-            fit_result = scipy.optimize.minimize(chisqfunc_uncorr, x0, method=method, tol=tolerance)
+            options = { 'maxiter': max_nfev }
+            fit_result = scipy.optimize.minimize(chisqfunc_uncorr, x0, method=method, tol=tolerance, bounds=bounds, options=options)
             if correlated_fit:
-                fit_result = scipy.optimize.minimize(chisqfunc, fit_result.x, method=method, tol=tolerance)
+                fit_result = scipy.optimize.minimize(chisqfunc, fit_result.x, method=method, tol=tolerance, bounds=bounds, options=options)
             output.iterations = fit_result.nit
 
         chisquare = fit_result.fun
@@ -412,12 +417,12 @@ def least_squares(x, y, func, priors=None, silent=False, initial_guess=None, met
         def chisqfunc_residuals_uncorr(p):
             return general_chisqfunc_uncorr(p, y_f, p_f)
 
-        fit_result = scipy.optimize.least_squares(chisqfunc_residuals_uncorr, x0, method='lm', ftol=1e-15, gtol=1e-15, xtol=1e-15)
+        fit_result = scipy.optimize.least_squares(chisqfunc_residuals_uncorr, x0, method='lm', ftol=1e-15, gtol=1e-15, xtol=1e-15, max_nfev=max_nfev)
         if correlated_fit:
             def chisqfunc_residuals(p):
                 return general_chisqfunc(p, y_f, p_f)
 
-            fit_result = scipy.optimize.least_squares(chisqfunc_residuals, fit_result.x, method='lm', ftol=1e-15, gtol=1e-15, xtol=1e-15)
+            fit_result = scipy.optimize.least_squares(chisqfunc_residuals, fit_result.x, method='lm', ftol=1e-15, gtol=1e-15, xtol=1e-15, max_nfev=max_nfev)
 
         chisquare = np.sum(fit_result.fun ** 2)
         assert np.isclose(chisquare, chisqfunc(fit_result.x), atol=1e-14)
