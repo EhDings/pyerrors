@@ -70,7 +70,9 @@ class Fit_result(Sequence):
         return '\n'.join([key.rjust(m) + ': ' + repr(value) for key, value in sorted(self.__dict__.items())])
 
 
-def least_squares(x, y, func, priors=None, silent=False, initial_guess=None, method='Levenberg-Marquardt', tol=None, correlated_fit=None, inv_chol_cov_matrix=None, expected_chisquare=False, resplot=False, do_qqplot=False, num_grad=False, smooth=None, max_nfev=None, bounds=(-anp.inf, anp.inf), **kwargs):
+def least_squares(x, y, func, priors=None, silent=False, initial_guess=None, method='Levenberg-Marquardt', tol=None, 
+                  correlated_fit=None, inv_chol_cov_matrix=None, expected_chisquare=False, resplot=False, 
+                  do_qqplot=False, num_grad=False, smooth=None, max_nfev=None, bounds=(-anp.inf, anp.inf), **kwargs):
     r'''Performs a non-linear fit to y = func(x).
         ```
 
@@ -299,7 +301,10 @@ def least_squares(x, y, func, priors=None, silent=False, initial_guess=None, met
     if len(key_ls) > 1:
         for key in key_ls:
             if np.asarray(yd[key]).shape != funcd[key](np.arange(n_parms), xd[key]).shape:
-                raise ValueError(f"Fit function {key} returns the wrong shape ({funcd[key](np.arange(n_parms), xd[key]).shape} instead of {xd[key].shape})\nIf the fit function is just a constant you could try adding x*0 to get the correct shape.")
+                raise ValueError(f"Fit function {key} returns the wrong shape "
+                                 f"({funcd[key](np.arange(n_parms), xd[key]).shape} instead of {xd[key].shape})\n"
+                                 f"If the fit function is just a constant you could try adding x*0 to get the correct "
+                                 f"shape.")
 
     if not silent:
         print('Fit with', n_parms, 'parameter' + 's' * (n_parms > 1))
