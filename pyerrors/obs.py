@@ -1471,7 +1471,7 @@ def correlate(obs_a, obs_b):
     return o
 
 
-def covariance(obs, visualize=False, correlation=False, smooth=None, **kwargs):
+def covariance(obs, visualize=False, correlation=False, smooth=None):
     r'''Calculates the error covariance matrix of a set of observables.
 
     WARNING: This function should be used with care, especially for observables with support on multiple
