@@ -446,7 +446,7 @@ class Obs:
                 my_string_list.append(my_string)
             print('\n'.join(my_string_list))
 
-    def reweight(self, weight):
+    def reweight(self, weight, all_configs=False):
         """Reweight the obs with given rewighting factors.
 
         Parameters
@@ -459,7 +459,7 @@ class Obs:
             the reweighting factor on all configurations in weight.idl and not
             on the configurations in obs[i].idl. Default False.
         """
-        return reweight(weight, [self])[0]
+        return reweight(weight, [self], all_configs=all_configs)[0]
 
     def is_zero_within_error(self, sigma=1):
         """Checks whether the observable is zero within 'sigma' standard errors.
@@ -1386,7 +1386,7 @@ def _reduce_deltas(deltas, idx_old, idx_new):
     return np.array(deltas)[indices]
 
 
-def reweight(weight, obs, **kwargs):
+def reweight(weight, obs, all_configs=False):
     """Reweight a list of observables.
 
     Parameters
@@ -1417,7 +1417,7 @@ def reweight(weight, obs, **kwargs):
             new_samples.append((w_deltas[name] + weight.r_values[name]) * (obs[i].deltas[name] + obs[i].r_values[name]))
         tmp_obs = Obs(new_samples, sorted(obs[i].names), idl=[obs[i].idl[name] for name in sorted(obs[i].names)])
 
-        if kwargs.get('all_configs'):
+        if all_configs:
             new_weight = weight
         else:
             new_weight = Obs([w_deltas[name] + weight.r_values[name] for name in sorted(obs[i].names)], sorted(obs[i].names), idl=[obs[i].idl[name] for name in sorted(obs[i].names)])
@@ -1471,7 +1471,7 @@ def correlate(obs_a, obs_b):
     return o
 
 
-def covariance(obs, visualize=False, correlation=False, smooth=None, **kwargs):
+def covariance(obs, visualize=False, correlation=False, smooth=None):
     r'''Calculates the error covariance matrix of a set of observables.
 
     WARNING: This function should be used with care, especially for observables with support on multiple

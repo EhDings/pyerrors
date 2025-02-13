@@ -42,7 +42,7 @@ class Corr:
 
     __slots__ = ["content", "N", "T", "tag", "prange"]
 
-    def __init__(self, data_input, padding=[0, 0], prange=None):
+    def __init__(self, data_input, padding=None, prange=None):
         """ Initialize a Corr object.
 
         Parameters
@@ -57,6 +57,9 @@ class Corr:
             List containing the first and last timeslice of the plateau
             region identified for this correlator.
         """
+
+        if padding is None:
+            padding = [0, 0]
 
         if isinstance(data_input, np.ndarray):
             if data_input.ndim == 1:
@@ -520,7 +523,7 @@ class Corr:
 
         return Corr(new_content)
 
-    def reweight(self, weight, **kwargs):
+    def reweight(self, weight, all_configs=False):
         """Reweight the correlator.
 
         Parameters
@@ -540,7 +543,7 @@ class Corr:
             if _check_for_none(self, t_slice):
                 new_content.append(None)
             else:
-                new_content.append(np.array(reweight(weight, t_slice, **kwargs)))
+                new_content.append(np.array(reweight(weight, t_slice, all_configs=all_configs)))
         return Corr(new_content)
 
     def T_symmetry(self, partner, parity=+1):
