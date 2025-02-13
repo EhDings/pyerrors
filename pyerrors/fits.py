@@ -70,7 +70,7 @@ class Fit_result(Sequence):
         return '\n'.join([key.rjust(m) + ': ' + repr(value) for key, value in sorted(self.__dict__.items())])
 
 
-def least_squares(x, y, func, priors=None, silent=False, initial_guess=None, method='Levenberg-Marquardt', tol=None, correlated_fit=None, inv_chol_cov_matrix=None, expected_chisquare=False, resplot=False, do_qqplot=False, num_grad=False, smooth=None, max_nfev=None, bounds=(-anp.inf, anp.inf), **kwargs):
+def least_squares(x, y, func, priors=None, silent=False, initial_guess=None, method='Levenberg-Marquardt', tol=None, correlated_fit=None, inv_chol_cov_matrix=None, expected_chisquare=False, resplot=False, do_qqplot=False, num_grad=False, smooth=None, max_nfev=None, bounds=None, **kwargs):
     r'''Performs a non-linear fit to y = func(x).
         ```
 
@@ -232,6 +232,9 @@ def least_squares(x, y, func, priors=None, silent=False, initial_guess=None, met
 
     '''
     output = Fit_result()
+
+    if bounds is None:
+        bounds = (-anp.inf, anp.inf)
 
     if (isinstance(x, dict) and isinstance(y, dict) and isinstance(func, dict)):
         xd = {key: anp.asarray(x[key]) for key in x}
