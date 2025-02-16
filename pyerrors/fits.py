@@ -70,9 +70,9 @@ class Fit_result(Sequence):
         return '\n'.join([key.rjust(m) + ': ' + repr(value) for key, value in sorted(self.__dict__.items())])
 
 
-def least_squares(x, y, func, priors=None, silent=False, initial_guess=None, method='Levenberg-Marquardt', tol=None, 
-                  correlated_fit=None, inv_chol_cov_matrix=None, expected_chisquare=False, resplot=False, 
-                  do_qqplot=False, num_grad=False, smooth=None, max_nfev=None, bounds=None, **kwargs):
+def least_squares(x, y, func, priors=None, silent=False, initial_guess=None, method='Levenberg-Marquardt', 
+                  correlated_fit=False, inv_chol_cov_matrix=None, expected_chisquare=False, resplot=False, 
+                  do_qqplot=False, num_grad=False, **kwargs):
     r'''Performs a non-linear fit to y = func(x).
         ```
 
@@ -235,9 +235,6 @@ def least_squares(x, y, func, priors=None, silent=False, initial_guess=None, met
     '''
     output = Fit_result()
 
-    if bounds is None:
-        bounds = (-anp.inf, anp.inf)
-
     if (isinstance(x, dict) and isinstance(y, dict) and isinstance(func, dict)):
         xd = {key: anp.asarray(x[key]) for key in x}
         yd = y
@@ -350,12 +347,11 @@ def least_squares(x, y, func, priors=None, silent=False, initial_guess=None, met
         prior_mask = []
         loc_priors = []
 
-    if initial_guess is not None:
-        x0 = initial_guess
-        if len(x0) != n_parms:
-            raise ValueError('Initial guess does not have the correct length: %d vs. %d' % (len(x0), n_parms))
-    else:
+    x0 = initial_guess
+    if initial_guess is None:
         x0 = [0.1] * n_parms
+    if len(x0) != n_parms:
+        raise ValueError('Initial guess does not have the correct length: %d vs. %d' % (len(x0), n_parms))
 
     if priors is None:
         def general_chisqfunc_uncorr(p, ivars, pr):
@@ -368,6 +364,10 @@ def least_squares(x, y, func, priors=None, silent=False, initial_guess=None, met
 
     def chisqfunc_uncorr(p):
         return anp.sum(general_chisqfunc_uncorr(p, y_f, p_f) ** 2)
+
+    smooth = None
+    if 'smooth' in kwargs:
+        smooth = int(kwargs.get('smooth'))
 
     if correlated_fit:
         if inv_chol_cov_matrix is not None:
@@ -398,39 +398,41 @@ def least_squares(x, y, func, priors=None, silent=False, initial_guess=None, met
     if not silent:
         print('Method:', output.method)
 
+    options_minimize = kwargs.copy()
+    options_minimize.pop('smooth', None)
     if output.method != 'Levenberg-Marquardt':
         if output.method == 'migrad':
-            tolerance = 1e-4  # default value of 1e-1 set by iminuit can be problematic
-            tolerance = tol
-            fit_result = iminuit.minimize(chisqfunc_uncorr, x0, tol=tolerance)  # Stopping criterion 0.002 * tol * errordef
+            if 'tol' not in options_minimize:
+                options_minimize['tol'] = 1.0e-4
+            fit_result = iminuit.minimize(chisqfunc_uncorr, x0, jac=jacobian(chisqfunc_uncorr), **options_minimize)  # Stopping criterion 0.002 * tol * errordef
             if correlated_fit:
-                fit_result = iminuit.minimize(chisqfunc, fit_result.x, tol=tolerance)
+                fit_result = iminuit.minimize(chisqfunc, fit_result.x, jac=jacobian(chisqfunc), **options_minimize)
             output.iterations = fit_result.nfev
         else:
-            tolerance = 1e-12
-            if tol is not None:
-                tolerance = tol
-            options = { 'maxiter': max_nfev }
-            fit_result = scipy.optimize.minimize(chisqfunc_uncorr, x0, method=method, tol=tolerance, bounds=bounds, options=options)
+            if 'tol' not in options_minimize:
+                options_minimize['tol'] = 1.0e-12
+            fit_result = scipy.optimize.minimize(chisqfunc_uncorr, x0, jac=jacobian(chisqfunc_uncorr), method=method, **options_minimize)
             if correlated_fit:
-                fit_result = scipy.optimize.minimize(chisqfunc, fit_result.x, method=method, tol=tolerance, bounds=bounds, options=options)
+                fit_result = scipy.optimize.minimize(chisqfunc, fit_result.x, jac=jacobian(chisqfunc), method=method, **options_minimize)
             output.iterations = fit_result.nit
 
         chisquare = fit_result.fun
 
     else:
-        if tol is not None:
+        if 'tol' in kwargs:
             print('tol cannot be set for Levenberg-Marquardt')
 
         def chisqfunc_residuals_uncorr(p):
             return general_chisqfunc_uncorr(p, y_f, p_f)
 
-        fit_result = scipy.optimize.least_squares(chisqfunc_residuals_uncorr, x0, method='lm', ftol=1e-15, gtol=1e-15, xtol=1e-15, max_nfev=max_nfev)
+        for tol_option in ['ftol', 'gtol', 'xtol']:
+            options_minimize[tol_option] = 1.0e-15
+        fit_result = scipy.optimize.least_squares(chisqfunc_residuals_uncorr, x0, method='lm', jac=jacobian(chisqfunc_residuals_uncorr), **options_minimize)
         if correlated_fit:
             def chisqfunc_residuals(p):
                 return general_chisqfunc(p, y_f, p_f)
 
-            fit_result = scipy.optimize.least_squares(chisqfunc_residuals, fit_result.x, method='lm', ftol=1e-15, gtol=1e-15, xtol=1e-15, max_nfev=max_nfev)
+            fit_result = scipy.optimize.least_squares(chisqfunc_residuals, fit_result.x, method='lm', jac=jacobian(chisqfunc_residuals), **options_minimize)
 
         chisquare = np.sum(fit_result.fun ** 2)
         assert np.isclose(chisquare, chisqfunc(fit_result.x), atol=1e-14)
